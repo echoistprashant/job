@@ -44,6 +44,14 @@ export default function Navbar({ activeTab, setActiveTab, selectedJobId }) {
             Job Board
           </button>
 
+          <button
+            className={`nav-button ${activeTab === 'applications' || activeTab === 'review' ? 'active' : ''}`}
+            onClick={() => setActiveTab('applications')}
+          >
+            <CheckCircle2 size={18} />
+            Applications
+          </button>
+
           {selectedJobId && (
             <button
               className={`nav-button ${activeTab === 'detail' ? 'active' : ''}`}

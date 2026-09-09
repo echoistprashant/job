@@ -34,7 +34,12 @@ class Application(Base):
     tailored_resume = Column(JSON, nullable=True)
     screening_questions = Column(JSON, nullable=True, default=list)
 
+    approved_at = Column(DateTime(timezone=True), nullable=True)
     applied_at = Column(DateTime(timezone=True), nullable=True)
+    confirmation_details = Column(JSON, nullable=True)
+    failure_reason = Column(Text, nullable=True)
+    submission_screenshot = Column(String(512), nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
@@ -63,6 +68,17 @@ class ApplicationDraftResult(BaseModel):
     notes: str = ""
 
 
+class SubmissionResult(BaseModel):
+    application_id: int
+    success: bool
+    status: str
+    confirmation_message: Optional[str] = None
+    confirmation_url: Optional[str] = None
+    screenshot_path: Optional[str] = None
+    failure_reason: Optional[str] = None
+    applied_at: Optional[datetime] = None
+
+
 class ApplicationResponse(BaseModel):
     id: int
     job_id: int
@@ -76,7 +92,11 @@ class ApplicationResponse(BaseModel):
     answers: Dict[str, Any]
     tailored_resume: Optional[Dict[str, Any]] = None
     screening_questions: List[Dict[str, Any]] = Field(default_factory=list)
+    approved_at: Optional[datetime] = None
     applied_at: Optional[datetime] = None
+    confirmation_details: Optional[Dict[str, Any]] = None
+    failure_reason: Optional[str] = None
+    submission_screenshot: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -84,6 +104,7 @@ class ApplicationResponse(BaseModel):
 
 
 class ApplicationContentUpdate(BaseModel):
+    filled_fields: Optional[Dict[str, Any]] = None
     cover_letter: Optional[str] = None
     answers: Optional[Dict[str, Any]] = None
     tailored_resume: Optional[Dict[str, Any]] = None

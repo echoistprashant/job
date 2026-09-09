@@ -3,10 +3,13 @@ import Navbar from './components/Navbar';
 import ProfilePage from './pages/ProfilePage';
 import JobListPage from './pages/JobListPage';
 import JobDetailPage from './pages/JobDetailPage';
+import ApplicationListPage from './pages/ApplicationListPage';
+import ApplicationReviewPage from './pages/ApplicationReviewPage';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('jobs'); // 'profile', 'jobs', 'detail'
+  const [activeTab, setActiveTab] = useState('jobs'); // 'profile', 'jobs', 'detail', 'applications', 'review'
   const [selectedJobId, setSelectedJobId] = useState(null);
+  const [selectedAppId, setSelectedAppId] = useState(null);
 
   const handleSelectJob = (jobId) => {
     setSelectedJobId(jobId);
@@ -15,6 +18,15 @@ export default function App() {
 
   const handleBackToList = () => {
     setActiveTab('jobs');
+  };
+
+  const handleSelectApplication = (appId) => {
+    setSelectedAppId(appId);
+    setActiveTab('review');
+  };
+
+  const handleBackToApplications = () => {
+    setActiveTab('applications');
   };
 
   return (
@@ -29,7 +41,20 @@ export default function App() {
         {activeTab === 'profile' && <ProfilePage />}
         {activeTab === 'jobs' && <JobListPage onSelectJob={handleSelectJob} />}
         {activeTab === 'detail' && selectedJobId && (
-          <JobDetailPage jobId={selectedJobId} onBack={handleBackToList} />
+          <JobDetailPage
+            jobId={selectedJobId}
+            onBack={handleBackToList}
+            onReviewApplication={handleSelectApplication}
+          />
+        )}
+        {activeTab === 'applications' && (
+          <ApplicationListPage onSelectApplication={handleSelectApplication} />
+        )}
+        {activeTab === 'review' && selectedAppId && (
+          <ApplicationReviewPage
+            applicationId={selectedAppId}
+            onBack={handleBackToApplications}
+          />
         )}
       </main>
     </div>

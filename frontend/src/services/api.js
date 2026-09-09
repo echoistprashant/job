@@ -72,4 +72,37 @@ export const api = {
     method: 'POST',
   }),
   getJobMatch: (jobId) => request(`/jobs/${jobId}/match`),
+
+  // Application Workflow & Human-in-the-Loop
+  listApplications: (status) => {
+    const qs = status ? `?status=${status}` : '';
+    return request(`/applications${qs}`);
+  },
+  getApplication: (id) => request(`/applications/${id}`),
+  prepareApplication: (jobId) => request(`/applications/${jobId}/prepare`, {
+    method: 'POST',
+  }),
+  extractQuestions: (id) => request(`/applications/${id}/extract-questions`, {
+    method: 'POST',
+  }),
+  answerQuestions: (id) => request(`/applications/${id}/answer-questions`, {
+    method: 'POST',
+  }),
+  tailorResume: (id) => request(`/applications/${id}/tailor-resume`, {
+    method: 'POST',
+  }),
+  generateCoverLetter: (id, tone = 'professional') => request(`/applications/${id}/cover-letter`, {
+    method: 'POST',
+    body: JSON.stringify({ tone }),
+  }),
+  updateApplicationContent: (id, data) => request(`/applications/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  }),
+  approveApplication: (id) => request(`/applications/${id}/approve`, {
+    method: 'POST',
+  }),
+  submitApplication: (id) => request(`/applications/${id}/submit`, {
+    method: 'POST',
+  }),
 };

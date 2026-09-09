@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, ExternalLink, Sparkles, CheckCircle, AlertTriangle, Building, MapPin, Briefcase } from 'lucide-react';
 import { api } from '../services/api';
 
-export default function JobDetailPage({ jobId, onBack }) {
+export default function JobDetailPage({ jobId, onBack, onReviewApplication }) {
   const [job, setJob] = useState(null);
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [matching, setMatching] = useState(false);
+  const [preparing, setPreparing] = useState(false);
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -45,6 +46,20 @@ export default function JobDetailPage({ jobId, onBack }) {
       alert(`Error recalculating match: ${err.message}`);
     } finally {
       setMatching(false);
+    }
+  };
+
+  const handlePrepareApplication = async () => {
+    try {
+      setPreparing(true);
+      const appRecord = await api.prepareApplication(job.id);
+      if (onReviewApplication) {
+        onReviewApplication(appRecord.id);
+      }
+    } catch (err) {
+      alert(`Error preparing application: ${err.message}`);
+    } finally {
+      setPreparing(false);
     }
   };
 
@@ -102,7 +117,7 @@ export default function JobDetailPage({ jobId, onBack }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Composite Fit Score</div>
             <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--primary)' }}>
@@ -110,8 +125,17 @@ export default function JobDetailPage({ jobId, onBack }) {
             </div>
           </div>
 
-          <a href={job.url} target="_blank" rel="noreferrer" className="btn btn-primary">
-            Apply on Company Site <ExternalLink size={16} />
+          <button
+            className="btn btn-primary"
+            onClick={handlePrepareApplication}
+            disabled={preparing}
+            style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
+          >
+            <Sparkles size={16} /> {preparing ? 'Preparing Draft...' : 'Prepare & Review Application'}
+          </button>
+
+          <a href={job.url} target="_blank" rel="noreferrer" className="btn btn-secondary">
+            External Apply <ExternalLink size={16} />
           </a>
         </div>
       </div>

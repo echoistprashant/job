@@ -12,6 +12,7 @@ from backend.app.models.application import (
     ApplicationContentUpdate,
     ApplicationListResponse,
     ApplicationResponse,
+    SubmissionResult,
 )
 from backend.app.services.application_service import application_service
 
@@ -130,6 +131,35 @@ def update_application_content(
     update_data: ApplicationContentUpdate,
     db: Session = Depends(get_db)
 ):
-    """Phase 35: Allow user editing of cover letter, answers, tailored resume, or status."""
+    """Phase 35 & 37: Allow user editing of filled fields, cover letter, answers, tailored resume, or status."""
     app_record = application_service.update_application_content(db, application_id, update_data)
     return ApplicationResponse.model_validate(app_record)
+
+
+@router.post("/{application_id}/approve", response_model=ApplicationResponse, status_code=status.HTTP_200_OK)
+def approve_application(
+    application_id: int,
+    db: Session = Depends(get_db)
+):
+    """Phase 37: Explicit Human-in-the-Loop Approval Action."""
+    app_record = application_service.approve_application(db, application_id)
+    return ApplicationResponse.model_validate(app_record)
+
+
+@router.post("/{application_id}/submit", response_model=SubmissionResult, status_code=status.HTTP_200_OK)
+async def submit_application(
+    application_id: int,
+    request: Optional[PrepareApplicationRequest] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Phase 38: Final submission step through browser workflow.
+    Phase 39: Validation error detection, failure recovery, and loop prevention.
+    MANDATORY SAFETY INVARIANT: Only APPROVED applications can reach submission.
+    """
+    resume_path = request.resume_file_path if request else None
+    return await application_service.submit_application(
+        db=db,
+        app_id=application_id,
+        resume_file_path=resume_path
+    )

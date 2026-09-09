@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.app.agents.application_agent import application_agent
+from backend.app.agents.submission_agent import submission_agent
 from backend.app.ai.cover_letter_generator import CoverLetterDraft, cover_letter_generator
 from backend.app.ai.question_agent import QuestionAnswer, grounded_question_agent
 from backend.app.ai.question_extractor import ScreeningQuestion, question_extractor
@@ -13,6 +14,7 @@ from backend.app.models.application import (
     Application,
     ApplicationContentUpdate,
     ApplicationDraftResult,
+    SubmissionResult,
 )
 from backend.app.models.job import Job
 from backend.app.models.resume import CandidateProfile
@@ -279,6 +281,10 @@ class ApplicationService:
                 detail=f"Application with ID {app_id} not found."
             )
 
+        if update_data.filled_fields is not None:
+            current_fields = dict(app_record.filled_fields or {})
+            current_fields.update(update_data.filled_fields)
+            app_record.filled_fields = current_fields
         if update_data.cover_letter is not None:
             app_record.cover_letter = update_data.cover_letter
         if update_data.answers is not None:
@@ -294,6 +300,89 @@ class ApplicationService:
         db.commit()
         db.refresh(app_record)
         return app_record
+
+    def approve_application(self, db: Session, app_id: int) -> Application:
+        """
+        Phase 37: Explicit Human-in-the-Loop Approval Action.
+        Transitions application from READY to APPROVED and logs timestamp.
+        """
+        app_record = self.get_application(db, app_id)
+        if not app_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Application with ID {app_id} not found."
+            )
+
+        app_record.status = "APPROVED"
+        app_record.approved_at = datetime.now(timezone.utc)
+        app_record.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(app_record)
+        return app_record
+
+    async def submit_application(
+        self,
+        db: Session,
+        app_id: int,
+        resume_file_path: Optional[str] = None
+    ) -> SubmissionResult:
+        """
+        Phase 38: Final submission step through browser automation.
+        Phase 39: Failure recovery and loop prevention.
+        MANDATORY SAFETY INVARIANT: Only APPROVED applications can be submitted.
+        """
+        app_record = self.get_application(db, app_id)
+        if not app_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Application with ID {app_id} not found."
+            )
+
+        if app_record.status != "APPROVED":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Application #{app_id} cannot be submitted. "
+                    f"Current status is '{app_record.status}'. "
+                    f"Application must be explicitly APPROVED by user before submission."
+                )
+            )
+
+        job = db.query(Job).filter(Job.id == app_record.job_id).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Associated job record not found."
+            )
+
+        profile = resume_service.get_current_profile() or CandidateProfile()
+
+        result: SubmissionResult = await submission_agent.submit_application(
+            application=app_record,
+            job=job,
+            profile=profile,
+            resume_file_path=resume_file_path
+        )
+
+        # Update database with submission outcome
+        app_record.status = result.status
+        if result.success:
+            app_record.applied_at = result.applied_at or datetime.now(timezone.utc)
+            app_record.confirmation_details = {
+                "message": result.confirmation_message,
+                "url": result.confirmation_url,
+                "screenshot": result.screenshot_path
+            }
+            app_record.submission_screenshot = result.screenshot_path
+            app_record.failure_reason = None
+        else:
+            app_record.failure_reason = result.failure_reason
+            app_record.submission_screenshot = result.screenshot_path
+
+        app_record.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(app_record)
+        return result
 
 
 application_service = ApplicationService()
