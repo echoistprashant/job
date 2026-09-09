@@ -6,6 +6,7 @@ from playwright.async_api import Page
 
 from backend.app.browser.browser import browser_service
 from backend.app.browser.field_mapper import field_mapper
+from backend.app.ai.question_extractor import question_extractor
 from backend.app.models.application import ApplicationDraftResult
 from backend.app.models.job import Job
 from backend.app.models.resume import CandidateProfile
@@ -104,9 +105,11 @@ class ApplicationAgent:
                     # Flag ambiguous choice for human review
                     unfilled_list.append(f"select_ambiguous:{select_field.name or select_field.id}")
 
-            # 6. Handle textareas (open-ended questions - left for Part H AI reasoning or human review)
-            for textarea in report.textareas:
-                unfilled_list.append(f"textarea_question:{textarea.name or textarea.id}")
+            # 6. Extract screening questions (Part H Phase 32)
+            extracted_questions = question_extractor.extract_questions(report)
+            extracted_questions_dump = [q.model_dump() for q in extracted_questions]
+            for q in extracted_questions:
+                unfilled_list.append(f"screening_question:{q.id}")
 
             # 7. STOP BEFORE SUBMISSION (Phase 31 requirement)
             logger.info("Application form draft prepared. STOPPED before submission.")
@@ -120,7 +123,8 @@ class ApplicationAgent:
                 unfilled_fields=unfilled_list,
                 resume_attached=resume_attached,
                 stopped_before_submission=True,
-                notes=f"Successfully filled {len(filled_log)} fields; {len(unfilled_list)} fields require review."
+                extracted_questions=extracted_questions_dump,
+                notes=f"Successfully filled {len(filled_log)} fields; {len(unfilled_list)} items noted."
             )
         finally:
             if own_context:

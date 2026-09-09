@@ -1,10 +1,19 @@
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
-from sqlalchemy.orm import Session
+from typing import Any, Dict, List, Optional, Tuple
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
 from backend.app.agents.application_agent import application_agent
-from backend.app.models.application import Application, ApplicationDraftResult
+from backend.app.ai.cover_letter_generator import CoverLetterDraft, cover_letter_generator
+from backend.app.ai.question_agent import QuestionAnswer, grounded_question_agent
+from backend.app.ai.question_extractor import ScreeningQuestion, question_extractor
+from backend.app.ai.resume_tailor import TailoredResume, resume_tailor
+from backend.app.browser.browser import browser_service
+from backend.app.models.application import (
+    Application,
+    ApplicationContentUpdate,
+    ApplicationDraftResult,
+)
 from backend.app.models.job import Job
 from backend.app.models.resume import CandidateProfile
 from backend.app.services.resume_service import resume_service
@@ -46,6 +55,8 @@ class ApplicationService:
             app_record.unfilled_fields = draft_result.unfilled_fields
             app_record.application_url = job.url
             app_record.source = job.source
+            if draft_result.extracted_questions:
+                app_record.screening_questions = draft_result.extracted_questions
             app_record.updated_at = datetime.now(timezone.utc)
             db.commit()
             db.refresh(app_record)
@@ -59,6 +70,7 @@ class ApplicationService:
             source=job.source,
             filled_fields=draft_result.filled_fields,
             unfilled_fields=draft_result.unfilled_fields,
+            screening_questions=draft_result.extracted_questions,
             answers={},
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc)
@@ -86,6 +98,202 @@ class ApplicationService:
     def get_application(self, db: Session, app_id: int) -> Optional[Application]:
         """Retrieve single application record by ID."""
         return db.query(Application).filter(Application.id == app_id).first()
+
+    async def extract_screening_questions(
+        self,
+        db: Session,
+        app_id: int
+    ) -> List[ScreeningQuestion]:
+        """
+        Phase 32: Extract screening questions from the application page
+        or retrieve previously extracted questions.
+        """
+        app_record = self.get_application(db, app_id)
+        if not app_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Application with ID {app_id} not found."
+            )
+
+        # If already stored on record, return parsed questions
+        if app_record.screening_questions:
+            return [ScreeningQuestion(**q) for q in app_record.screening_questions]
+
+        # Inspect live page
+        job = db.query(Job).filter(Job.id == app_record.job_id).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Associated job record not found."
+            )
+
+        page, context, nav_result, own_context = await browser_service.open_page(job.url)
+        try:
+            report = await browser_service.inspect_page_structure(page)
+            questions = question_extractor.extract_questions(report)
+            app_record.screening_questions = [q.model_dump() for q in questions]
+            app_record.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(app_record)
+            return questions
+        finally:
+            if own_context:
+                await page.close()
+                await context.close()
+
+    def answer_screening_questions(
+        self,
+        db: Session,
+        app_id: int,
+        questions: Optional[List[ScreeningQuestion]] = None,
+        profile: Optional[CandidateProfile] = None
+    ) -> List[QuestionAnswer]:
+        """
+        Phase 33: Produce grounded, structured answers for screening questions.
+        """
+        app_record = self.get_application(db, app_id)
+        if not app_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Application with ID {app_id} not found."
+            )
+
+        job = db.query(Job).filter(Job.id == app_record.job_id).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Associated job not found."
+            )
+
+        if profile is None:
+            profile = resume_service.get_current_profile() or CandidateProfile()
+
+        # Target questions
+        if not questions:
+            if app_record.screening_questions:
+                target_questions = [ScreeningQuestion(**q) for q in app_record.screening_questions]
+            else:
+                target_questions = []
+        else:
+            target_questions = questions
+
+        answers = grounded_question_agent.answer_all_questions(
+            questions=target_questions,
+            profile=profile,
+            job=job
+        )
+
+        current_answers = dict(app_record.answers or {})
+        for ans in answers:
+            current_answers[ans.question_id] = ans.model_dump()
+
+        app_record.answers = current_answers
+        app_record.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(app_record)
+        return answers
+
+    def generate_tailored_resume(
+        self,
+        db: Session,
+        app_id: int,
+        profile: Optional[CandidateProfile] = None
+    ) -> TailoredResume:
+        """
+        Phase 34: Generate job-specific tailored resume draft with factual integrity verification.
+        """
+        app_record = self.get_application(db, app_id)
+        if not app_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Application with ID {app_id} not found."
+            )
+
+        job = db.query(Job).filter(Job.id == app_record.job_id).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Associated job not found."
+            )
+
+        if profile is None:
+            profile = resume_service.get_current_profile() or CandidateProfile()
+
+        tailored = resume_tailor.tailor_resume(profile, job)
+
+        app_record.tailored_resume = tailored.model_dump()
+        app_record.resume_version = tailored.version_id
+        app_record.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(app_record)
+        return tailored
+
+    def generate_cover_letter(
+        self,
+        db: Session,
+        app_id: int,
+        custom_tone: str = "professional",
+        profile: Optional[CandidateProfile] = None
+    ) -> CoverLetterDraft:
+        """
+        Phase 35: Generate grounded, role-specific cover letter.
+        """
+        app_record = self.get_application(db, app_id)
+        if not app_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Application with ID {app_id} not found."
+            )
+
+        job = db.query(Job).filter(Job.id == app_record.job_id).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Associated job not found."
+            )
+
+        if profile is None:
+            profile = resume_service.get_current_profile() or CandidateProfile()
+
+        draft = cover_letter_generator.generate(profile, job, custom_tone)
+
+        app_record.cover_letter = draft.full_text
+        app_record.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(app_record)
+        return draft
+
+    def update_application_content(
+        self,
+        db: Session,
+        app_id: int,
+        update_data: ApplicationContentUpdate
+    ) -> Application:
+        """
+        Phase 35: Update editable application content (cover letter, answers, tailored resume).
+        """
+        app_record = self.get_application(db, app_id)
+        if not app_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Application with ID {app_id} not found."
+            )
+
+        if update_data.cover_letter is not None:
+            app_record.cover_letter = update_data.cover_letter
+        if update_data.answers is not None:
+            current_answers = dict(app_record.answers or {})
+            current_answers.update(update_data.answers)
+            app_record.answers = current_answers
+        if update_data.tailored_resume is not None:
+            app_record.tailored_resume = update_data.tailored_resume
+        if update_data.status is not None:
+            app_record.status = update_data.status.upper()
+
+        app_record.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(app_record)
+        return app_record
 
 
 application_service = ApplicationService()

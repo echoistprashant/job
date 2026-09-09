@@ -31,6 +31,8 @@ class Application(Base):
     filled_fields = Column(JSON, nullable=False, default=dict)
     unfilled_fields = Column(JSON, nullable=False, default=list)
     answers = Column(JSON, nullable=False, default=dict)
+    tailored_resume = Column(JSON, nullable=True)
+    screening_questions = Column(JSON, nullable=True, default=list)
 
     applied_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -57,6 +59,7 @@ class ApplicationDraftResult(BaseModel):
     unfilled_fields: List[str] = Field(default_factory=list)
     resume_attached: bool = False
     stopped_before_submission: bool = True
+    extracted_questions: List[Dict[str, Any]] = Field(default_factory=list)
     notes: str = ""
 
 
@@ -71,11 +74,20 @@ class ApplicationResponse(BaseModel):
     filled_fields: Dict[str, Any]
     unfilled_fields: List[str]
     answers: Dict[str, Any]
+    tailored_resume: Optional[Dict[str, Any]] = None
+    screening_questions: List[Dict[str, Any]] = Field(default_factory=list)
     applied_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ApplicationContentUpdate(BaseModel):
+    cover_letter: Optional[str] = None
+    answers: Optional[Dict[str, Any]] = None
+    tailored_resume: Optional[Dict[str, Any]] = None
+    status: Optional[str] = None
 
 
 class ApplicationListResponse(BaseModel):
