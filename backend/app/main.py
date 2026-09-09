@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import settings
+from backend.app.api.routes.resume import router as resume_router
+
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -18,6 +20,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register routers
+app.include_router(resume_router)
 
 
 @app.get("/", tags=["Root"])
