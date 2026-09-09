@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Briefcase, User, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Briefcase, User, FileText, CheckCircle2, AlertCircle, Zap } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function Navbar({ activeTab, setActiveTab, selectedJobId }) {
@@ -50,6 +50,14 @@ export default function Navbar({ activeTab, setActiveTab, selectedJobId }) {
           >
             <CheckCircle2 size={18} />
             Applications
+          </button>
+
+          <button
+            className={`nav-button ${activeTab === 'auto-apply' ? 'active' : ''}`}
+            onClick={() => setActiveTab('auto-apply')}
+          >
+            <Zap size={18} />
+            Auto-Apply
           </button>
 
           {selectedJobId && (

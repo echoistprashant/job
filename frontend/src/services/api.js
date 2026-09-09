@@ -126,4 +126,17 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ interval_minutes: minutes }),
   }),
+
+  // Auto-Apply & Production Analytics (Phases 48-50)
+  getAutoApplyPolicy: () => request('/auto-apply/policy'),
+  updateAutoApplyPolicy: (policy) => request('/auto-apply/policy', {
+    method: 'POST',
+    body: JSON.stringify(policy),
+  }),
+  getDailyQuota: () => request('/auto-apply/quota'),
+  runAutoApplyNow: (params) => request('/auto-apply/run', {
+    method: 'POST',
+    body: JSON.stringify(params || {}),
+  }),
+  getAnalyticsOverview: () => request('/analytics/overview'),
 };

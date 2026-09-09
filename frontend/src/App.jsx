@@ -5,9 +5,10 @@ import JobListPage from './pages/JobListPage';
 import JobDetailPage from './pages/JobDetailPage';
 import ApplicationListPage from './pages/ApplicationListPage';
 import ApplicationReviewPage from './pages/ApplicationReviewPage';
+import AutoApplyPage from './pages/AutoApplyPage';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('jobs'); // 'profile', 'jobs', 'detail', 'applications', 'review'
+  const [activeTab, setActiveTab] = useState('jobs'); // 'profile', 'jobs', 'detail', 'applications', 'review', 'auto-apply'
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [selectedAppId, setSelectedAppId] = useState(null);
 
@@ -56,6 +57,7 @@ export default function App() {
             onBack={handleBackToApplications}
           />
         )}
+        {activeTab === 'auto-apply' && <AutoApplyPage />}
       </main>
     </div>
   );
