@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import List, Union
+from typing import List, Optional, Union
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -23,8 +23,10 @@ class Settings(BaseSettings):
             return v
         return ["*"]
 
-    # Security
+    # Security & Encryption (Phase 46)
     SECRET_KEY: str = "default_insecure_development_secret_key"
+    APP_SECRET_KEY: Optional[str] = None
+    APP_ENCRYPTION_KEY: Optional[str] = None
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_job_agent"

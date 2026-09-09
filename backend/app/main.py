@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import settings
 from backend.app.db.database import init_db
@@ -38,6 +38,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    # Exempt health checks and documentation from rate limiting
+    if request.url.path in ["/health", "/docs", "/openapi.json", "/redoc"]:
+        return await call_next(request)
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    from backend.app.core.security import rate_limiter
+    rate_limiter.check_rate_limit(client_ip)
+    return await call_next(request)
+
 
 # Register routers
 app.include_router(resume_router)
