@@ -91,3 +91,14 @@ class ResumeUploadResponse(BaseModel):
     file_size_bytes: int
     extracted_text_length: int
     profile: CandidateProfile
+
+
+class CandidateProfileUpdate(BaseModel):
+    target_roles: Optional[List[str]] = None
+    experience_level: Optional[str] = None
+    locations: Optional[List[str]] = None
+    skills: Optional[List[str]] = None
+    remote_preference: Optional[bool] = None
+    minimum_match_score: Optional[int] = Field(default=None, ge=0, le=100)
+    auto_apply: Optional[bool] = None
+

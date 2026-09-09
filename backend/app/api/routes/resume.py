@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from backend.app.ai.resume_parser import resume_parser
-from backend.app.models.resume import CandidateProfile, ResumeUploadResponse
+from backend.app.models.resume import CandidateProfile, CandidateProfileUpdate, ResumeUploadResponse
 from backend.app.services.resume_service import resume_service
 
 router = APIRouter(prefix="/resume", tags=["Resume"])
@@ -67,3 +67,10 @@ def get_candidate_profile():
         # Return default initialized candidate profile if none has been uploaded yet
         return CandidateProfile()
     return profile
+
+
+@router.patch("/profile", response_model=CandidateProfile, status_code=status.HTTP_200_OK)
+def update_candidate_profile(update_data: CandidateProfileUpdate):
+    """Update user preferences or profile fields (e.g. target roles, locations, match threshold)."""
+    updated = resume_service.update_profile(update_data)
+    return updated

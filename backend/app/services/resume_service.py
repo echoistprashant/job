@@ -104,6 +104,19 @@ class ResumeService:
         """Retrieve the active candidate profile."""
         return self._current_profile
 
+    def update_profile(self, update_data: "CandidateProfileUpdate") -> CandidateProfile:
+        """Apply partial updates to the active candidate profile."""
+        if self._current_profile is None:
+            self._current_profile = CandidateProfile()
+
+        data_dict = update_data.model_dump(exclude_unset=True)
+        for key, val in data_dict.items():
+            if hasattr(self._current_profile, key) and val is not None:
+                setattr(self._current_profile, key, val)
+
+        return self._current_profile
+
+
     @staticmethod
     def _clean_text(text: str) -> str:
         """Normalize line breaks and remove redundant spaces."""

@@ -134,3 +134,24 @@ def test_get_candidate_profile_persisted():
     assert response.status_code == 200
     data = response.json()
     assert data["candidate"]["email"] == "alex.johnson@example.com"
+
+
+def test_patch_candidate_profile():
+    """PATCH /resume/profile and PATCH /profile allow updating user preferences."""
+    patch_data = {
+        "target_roles": ["Principal AI Architect", "Staff ML Engineer"],
+        "minimum_match_score": 85,
+        "locations": ["Bangalore", "Remote", "Singapore"],
+        "remote_preference": True
+    }
+    response = client.patch("/resume/profile", json=patch_data)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["target_roles"] == ["Principal AI Architect", "Staff ML Engineer"]
+    assert data["minimum_match_score"] == 85
+    assert "Singapore" in data["locations"]
+
+    # Test alias route /profile
+    alias_response = client.patch("/profile", json={"minimum_match_score": 90})
+    assert alias_response.status_code == 200
+    assert alias_response.json()["minimum_match_score"] == 90

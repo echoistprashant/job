@@ -56,3 +56,13 @@ def health_check():
         "environment": settings.APP_ENV,
         "version": "0.1.0"
     }
+
+
+@app.patch("/profile", tags=["Profile"])
+def update_profile_direct(update_data: dict):
+    """Direct alias for updating candidate profile preferences."""
+    from backend.app.models.resume import CandidateProfileUpdate
+    from backend.app.services.resume_service import resume_service
+    parsed = CandidateProfileUpdate.model_validate(update_data)
+    return resume_service.update_profile(parsed)
+
