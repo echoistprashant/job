@@ -5,6 +5,7 @@ from alembic import context
 from backend.app.db.database import Base, engine
 from backend.app.models.job import Job  # ensures model is registered on Base
 from backend.app.models.match import JobMatch  # ensures model is registered on Base
+from backend.app.models.application import Application  # ensures model is registered on Base
 
 # this is the Alembic Config object, which provides access to the values within the .ini file in use.
 config = context.config

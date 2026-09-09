@@ -39,6 +39,7 @@ def init_db():
     """Create all database tables."""
     from backend.app.models.job import Job  # noqa: F401
     from backend.app.models.match import JobMatch  # noqa: F401
+    from backend.app.models.application import Application  # noqa: F401
     Base.metadata.create_all(bind=engine)
 
 

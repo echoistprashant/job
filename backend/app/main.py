@@ -5,6 +5,7 @@ from backend.app.config import settings
 from backend.app.db.database import init_db
 from backend.app.api.routes.resume import router as resume_router
 from backend.app.api.routes.jobs import router as jobs_router
+from backend.app.api.routes.applications import router as applications_router
 
 
 @asynccontextmanager
@@ -35,6 +36,8 @@ app.add_middleware(
 # Register routers
 app.include_router(resume_router)
 app.include_router(jobs_router)
+app.include_router(applications_router)
+
 
 
 @app.get("/", tags=["Root"])

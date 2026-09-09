@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -26,30 +27,69 @@ class BrowserService:
     def __init__(self, sessions_dir: str = "sessions"):
         self._sessions_dir = Path(sessions_dir)
         self._sessions_dir.mkdir(parents=True, exist_ok=True)
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._playwright = None
         self._browser: Optional[Browser] = None
         self.default_timeout_ms = 20000
 
-    async def initialize(self, headless: bool = True):
-        """Launch and centralize browser instance."""
-        if not self._playwright:
+    async def _ensure_browser(self, headless: bool = True) -> Browser:
+        current_loop = asyncio.get_running_loop()
+        needs_init = (
+            self._browser is None
+            or self._loop != current_loop
+        )
+        if not needs_init:
+            try:
+                if not self._browser.is_connected():
+                    needs_init = True
+            except Exception:
+                needs_init = True
+
+        if needs_init:
+            if self._browser:
+                try:
+                    await self._browser.close()
+                except Exception:
+                    pass
+                self._browser = None
+            if self._playwright:
+                try:
+                    await self._playwright.stop()
+                except Exception:
+                    pass
+                self._playwright = None
+
             self._playwright = await async_playwright().start()
-        if not self._browser or not self._browser.is_connected():
             logger.info(f"Launching Playwright Chromium (headless={headless})...")
             self._browser = await self._playwright.chromium.launch(
                 headless=headless,
                 args=["--disable-blink-features=AutomationControlled"]
             )
+            self._loop = current_loop
+
+        return self._browser
+
+    async def initialize(self, headless: bool = True):
+        """Launch and centralize browser instance."""
+        await self._ensure_browser(headless=headless)
 
     async def close(self):
         """Cleanly shutdown browser and Playwright driver."""
         if self._browser:
-            await self._browser.close()
+            try:
+                await self._browser.close()
+            except Exception:
+                pass
             self._browser = None
         if self._playwright:
-            await self._playwright.stop()
+            try:
+                await self._playwright.stop()
+            except Exception:
+                pass
             self._playwright = None
+        self._loop = None
         logger.info("Browser service closed.")
+
 
     async def create_isolated_context(
         self,
@@ -59,8 +99,8 @@ class BrowserService:
         Create an isolated browser context.
         If a session_name is provided and exists, loads persisted storage state.
         """
-        if not self._browser:
-            await self.initialize(headless=True)
+        browser = await self._ensure_browser(headless=True)
+
 
         storage_state_path = None
         if session_name:
@@ -69,7 +109,7 @@ class BrowserService:
                 storage_state_path = str(session_file)
                 logger.info(f"Loading session storage state from {storage_state_path}")
 
-        context = await self._browser.new_context(
+        context = await browser.new_context(
             viewport={"width": 1280, "height": 800},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             storage_state=storage_state_path
