@@ -24,12 +24,51 @@ class JobSearchResponse(BaseModel):
     message: str
 
 
+class AsyncTaskSubmitResponse(BaseModel):
+    task_id: str
+    status: str
+    message: str
+
+
+@router.post("/search/async", response_model=AsyncTaskSubmitResponse, status_code=status.HTTP_202_ACCEPTED)
+async def search_and_collect_jobs_async(
+    request: JobSearchRequest,
+):
+    """
+    Phase 42: Asynchronously run job search, collection, deduplication, and persistence
+    outside the HTTP request cycle using the background task runner.
+    """
+    from backend.app.core.task_runner import task_runner
+    from backend.app.db.database import SessionLocal
+
+    async def _run_search():
+        with SessionLocal() as db_session:
+            new_added, total_scanned = await job_service.collect_and_store_jobs(
+                db=db_session,
+                keywords=request.keywords,
+                locations=request.locations,
+                limit_per_source=request.limit_per_source
+            )
+            return {
+                "new_jobs_added": new_added,
+                "total_jobs_scanned": total_scanned,
+                "status": "completed"
+            }
+
+    task_id = task_runner.submit_task("job_search_and_collection", _run_search)
+    return AsyncTaskSubmitResponse(
+        task_id=task_id,
+        status="PENDING",
+        message="Job collection task submitted to background worker."
+    )
+
+
 @router.post("/search", response_model=JobSearchResponse, status_code=status.HTTP_200_OK)
 async def search_and_collect_jobs(
     request: JobSearchRequest,
     db: Session = Depends(get_db)
 ):
-    """Run job adapters to collect, normalize, deduplicate, and persist jobs."""
+    """Run job adapters to collect, normalize, deduplicate, and persist jobs synchronously."""
     new_added, total_scanned = await job_service.collect_and_store_jobs(
         db=db,
         keywords=request.keywords,

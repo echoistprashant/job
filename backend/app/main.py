@@ -6,6 +6,9 @@ from backend.app.db.database import init_db
 from backend.app.api.routes.resume import router as resume_router
 from backend.app.api.routes.jobs import router as jobs_router
 from backend.app.api.routes.applications import router as applications_router
+from backend.app.api.routes.tasks import router as tasks_router
+from backend.app.api.routes.scheduler import router as scheduler_router
+from backend.app.core.scheduler import job_scheduler
 
 
 @asynccontextmanager
@@ -13,6 +16,9 @@ async def lifespan(app: FastAPI):
     # Initialize tables on startup
     init_db()
     yield
+    # Graceful shutdown
+    if job_scheduler.is_active:
+        job_scheduler.stop()
 
 
 app = FastAPI(
@@ -37,6 +43,9 @@ app.add_middleware(
 app.include_router(resume_router)
 app.include_router(jobs_router)
 app.include_router(applications_router)
+app.include_router(tasks_router)
+app.include_router(scheduler_router)
+
 
 
 

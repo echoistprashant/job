@@ -105,4 +105,25 @@ export const api = {
   submitApplication: (id) => request(`/applications/${id}/submit`, {
     method: 'POST',
   }),
+  updateApplicationStatus: (id, payload) => request(`/applications/${id}/status`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  getApplicationHistory: (id) => request(`/applications/${id}/history`),
+
+  // Background Tasks & Scheduler (Phases 42 & 43)
+  searchJobsAsync: (keywords, locations) => request('/jobs/search/async', {
+    method: 'POST',
+    body: JSON.stringify({ keywords, locations, limit_per_source: 20 }),
+  }),
+  getTaskStatus: (taskId) => request(`/tasks/${taskId}`),
+  listTasks: () => request('/tasks'),
+  getSchedulerStatus: () => request('/scheduler/status'),
+  startScheduler: () => request('/scheduler/start', { method: 'POST' }),
+  stopScheduler: () => request('/scheduler/stop', { method: 'POST' }),
+  runSchedulerNow: () => request('/scheduler/run-now', { method: 'POST' }),
+  updateSchedulerInterval: (minutes) => request('/scheduler/interval', {
+    method: 'POST',
+    body: JSON.stringify({ interval_minutes: minutes }),
+  }),
 };

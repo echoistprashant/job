@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, RefreshCw, Filter, ArrowUpDown, ExternalLink, Sparkles, MapPin, Building } from 'lucide-react';
+import { Search, RefreshCw, Filter, ArrowUpDown, ExternalLink, Sparkles, MapPin, Building, Clock, Play, Pause, Zap, CheckCircle2 } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function JobListPage({ onSelectJob }) {
@@ -15,6 +15,21 @@ export default function JobListPage({ onSelectJob }) {
   const [remoteOnly, setRemoteOnly] = useState(false);
   const [source, setSource] = useState('');
   const [sortBy, setSortBy] = useState('match_desc'); // match_desc, date_desc, date_asc
+
+  // Scheduler & Background Worker State (Phases 42 & 43)
+  const [schedulerStatus, setSchedulerStatus] = useState(null);
+  const [activeTaskId, setActiveTaskId] = useState(null);
+  const [activeTaskInfo, setActiveTaskInfo] = useState(null);
+  const [schedulerActionLoading, setSchedulerActionLoading] = useState(false);
+
+  const loadScheduler = async () => {
+    try {
+      const st = await api.getSchedulerStatus();
+      setSchedulerStatus(st);
+    } catch (e) {
+      console.error('Failed to get scheduler status:', e);
+    }
+  };
 
   const loadJobs = async () => {
     try {
@@ -51,7 +66,58 @@ export default function JobListPage({ onSelectJob }) {
 
   useEffect(() => {
     loadJobs();
+    loadScheduler();
   }, [remoteOnly, source]);
+
+  // Poll active background task
+  useEffect(() => {
+    if (!activeTaskId) return;
+    const interval = setInterval(async () => {
+      try {
+        const info = await api.getTaskStatus(activeTaskId);
+        setActiveTaskInfo(info);
+        if (info.status === 'SUCCESS' || info.status === 'FAILED') {
+          clearInterval(interval);
+          setActiveTaskId(null);
+          await loadJobs();
+          await loadScheduler();
+        }
+      } catch (e) {
+        console.error('Error polling task:', e);
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [activeTaskId]);
+
+  const handleToggleScheduler = async () => {
+    setSchedulerActionLoading(true);
+    try {
+      if (schedulerStatus?.is_active) {
+        const res = await api.stopScheduler();
+        setSchedulerStatus(res);
+      } else {
+        const res = await api.startScheduler();
+        setSchedulerStatus(res);
+      }
+    } catch (err) {
+      alert(`Scheduler action failed: ${err.message}`);
+    } finally {
+      setSchedulerActionLoading(false);
+    }
+  };
+
+  const handleRunBackgroundSearch = async () => {
+    setSchedulerActionLoading(true);
+    try {
+      const res = await api.runSchedulerNow();
+      setActiveTaskId(res.task_id);
+      setActiveTaskInfo({ task_id: res.task_id, status: 'RUNNING', name: 'scheduled_job_discovery' });
+    } catch (err) {
+      alert(`Failed to trigger background search: ${err.message}`);
+    } finally {
+      setSchedulerActionLoading(false);
+    }
+  };
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -125,6 +191,57 @@ export default function JobListPage({ onSelectJob }) {
             <Sparkles size={16} />
             {matchingAll ? 'Scoring...' : 'Score All Jobs'}
           </button>
+        </div>
+      </div>
+
+      {/* Background Automation & Scheduler Panel (Phases 42 & 43) */}
+      <div className="card" style={{ padding: '0.85rem 1.25rem', marginBottom: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{
+              width: '10px', height: '10px', borderRadius: '50%',
+              backgroundColor: schedulerStatus?.is_active ? '#10b981' : '#94a3b8'
+            }} />
+            <div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>
+                Automated Job Discovery: {schedulerStatus?.is_active ? 'ACTIVE' : 'PAUSED'}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                {schedulerStatus?.is_active
+                  ? `Runs every ${schedulerStatus.interval_minutes}m • Next scan: ${schedulerStatus.next_run_at ? new Date(schedulerStatus.next_run_at).toLocaleTimeString() : 'Pending'}`
+                  : 'Recurring discovery is paused. Run manually or activate schedule.'}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            {activeTaskInfo && (
+              <span className="badge" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+                <RefreshCw size={12} className="spin" /> Background Scan ({activeTaskInfo.status})
+              </span>
+            )}
+
+            <button
+              className="btn btn-outline btn-sm"
+              onClick={handleRunBackgroundSearch}
+              disabled={schedulerActionLoading || Boolean(activeTaskId)}
+              title="Execute discovery pipeline asynchronously in background worker"
+            >
+              <Zap size={14} /> Run Background Search
+            </button>
+
+            <button
+              className={`btn btn-sm ${schedulerStatus?.is_active ? 'btn-outline' : 'btn-primary'}`}
+              onClick={handleToggleScheduler}
+              disabled={schedulerActionLoading}
+            >
+              {schedulerStatus?.is_active ? (
+                <><Pause size={14} /> Pause Schedule</>
+              ) : (
+                <><Play size={14} /> Enable Schedule</>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 

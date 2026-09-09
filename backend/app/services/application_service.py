@@ -15,6 +15,7 @@ from backend.app.models.application import (
     ApplicationContentUpdate,
     ApplicationDraftResult,
     SubmissionResult,
+    VALID_STATUSES,
 )
 from backend.app.models.job import Job
 from backend.app.models.resume import CandidateProfile
@@ -50,8 +51,20 @@ class ApplicationService:
         )
 
         # Check for existing application record
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
         app_record = db.query(Application).filter(Application.job_id == job_id).first()
         if app_record:
+            history = list(app_record.status_history or [])
+            if app_record.status != draft_result.status:
+                history.append({
+                    "from_status": app_record.status,
+                    "to_status": draft_result.status,
+                    "timestamp": now_iso,
+                    "actor": "system",
+                    "note": "Draft updated with latest job form details"
+                })
+                app_record.status_history = history
             app_record.status = draft_result.status
             app_record.filled_fields = draft_result.filled_fields
             app_record.unfilled_fields = draft_result.unfilled_fields
@@ -59,12 +72,19 @@ class ApplicationService:
             app_record.source = job.source
             if draft_result.extracted_questions:
                 app_record.screening_questions = draft_result.extracted_questions
-            app_record.updated_at = datetime.now(timezone.utc)
+            app_record.updated_at = now
             db.commit()
             db.refresh(app_record)
             return app_record
 
         # Create new application record
+        initial_history = [{
+            "from_status": None,
+            "to_status": draft_result.status,
+            "timestamp": now_iso,
+            "actor": "system",
+            "note": "Application draft initialized"
+        }]
         new_app = Application(
             job_id=job_id,
             status=draft_result.status,
@@ -74,8 +94,9 @@ class ApplicationService:
             unfilled_fields=draft_result.unfilled_fields,
             screening_questions=draft_result.extracted_questions,
             answers={},
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc)
+            status_history=initial_history,
+            created_at=now,
+            updated_at=now
         )
         db.add(new_app)
         db.commit()
@@ -293,15 +314,39 @@ class ApplicationService:
             app_record.answers = current_answers
         if update_data.tailored_resume is not None:
             app_record.tailored_resume = update_data.tailored_resume
-        if update_data.status is not None:
-            app_record.status = update_data.status.upper()
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
 
-        app_record.updated_at = datetime.now(timezone.utc)
+        if update_data.notes is not None:
+            app_record.notes = update_data.notes
+        if update_data.interview_details is not None:
+            app_record.interview_details = update_data.interview_details
+
+        if update_data.status is not None:
+            new_st = update_data.status.upper().strip()
+            if new_st not in VALID_STATUSES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid status '{new_st}'. Allowed: {', '.join(VALID_STATUSES)}"
+                )
+            if new_st != app_record.status:
+                history = list(app_record.status_history or [])
+                history.append({
+                    "from_status": app_record.status,
+                    "to_status": new_st,
+                    "timestamp": now_iso,
+                    "actor": "user",
+                    "note": update_data.notes or "Updated status via application edit"
+                })
+                app_record.status_history = history
+                app_record.status = new_st
+
+        app_record.updated_at = now
         db.commit()
         db.refresh(app_record)
         return app_record
 
-    def approve_application(self, db: Session, app_id: int) -> Application:
+    def approve_application(self, db: Session, app_id: int, note: Optional[str] = None) -> Application:
         """
         Phase 37: Explicit Human-in-the-Loop Approval Action.
         Transitions application from READY to APPROVED and logs timestamp.
@@ -313,9 +358,70 @@ class ApplicationService:
                 detail=f"Application with ID {app_id} not found."
             )
 
+        now = datetime.now(timezone.utc)
+        history = list(app_record.status_history or [])
+        history.append({
+            "from_status": app_record.status,
+            "to_status": "APPROVED",
+            "timestamp": now.isoformat(),
+            "actor": "user",
+            "note": note or "Explicitly approved by user for submission"
+        })
+
         app_record.status = "APPROVED"
-        app_record.approved_at = datetime.now(timezone.utc)
-        app_record.updated_at = datetime.now(timezone.utc)
+        app_record.status_history = history
+        app_record.approved_at = now
+        app_record.updated_at = now
+        db.commit()
+        db.refresh(app_record)
+        return app_record
+
+    def update_application_status(
+        self,
+        db: Session,
+        app_id: int,
+        new_status: str,
+        note: Optional[str] = None,
+        actor: str = "user",
+        interview_details: Optional[Dict[str, Any]] = None
+    ) -> Application:
+        """
+        Phase 40: Transition application through full recruitment lifecycle.
+        Statuses: SAVED, MATCHED, READY, APPROVED, SUBMITTED, INTERVIEW, OFFER, REJECTED, WITHDRAWN, FAILED.
+        """
+        app_record = self.get_application(db, app_id)
+        if not app_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Application with ID {app_id} not found."
+            )
+
+        new_status_norm = new_status.upper().strip()
+        if new_status_norm not in VALID_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status '{new_status}'. Allowed statuses: {', '.join(VALID_STATUSES)}"
+            )
+
+        now = datetime.now(timezone.utc)
+        history = list(app_record.status_history or [])
+        history.append({
+            "from_status": app_record.status,
+            "to_status": new_status_norm,
+            "timestamp": now.isoformat(),
+            "actor": actor,
+            "note": note,
+            "interview_details": interview_details
+        })
+
+        app_record.status = new_status_norm
+        app_record.status_history = history
+        if interview_details is not None:
+            app_record.interview_details = interview_details
+        if note:
+            app_record.notes = note
+        app_record.updated_at = now
+
         db.commit()
         db.refresh(app_record)
         return app_record
@@ -364,10 +470,21 @@ class ApplicationService:
             resume_file_path=resume_file_path
         )
 
-        # Update database with submission outcome
+        now = datetime.now(timezone.utc)
+        history = list(app_record.status_history or [])
+        history.append({
+            "from_status": "APPROVED",
+            "to_status": result.status,
+            "timestamp": now.isoformat(),
+            "actor": "submission_agent",
+            "note": result.confirmation_message if result.success else f"Submission failed: {result.failure_reason}"
+        })
+        app_record.status_history = history
         app_record.status = result.status
+
+        # Update database with submission outcome
         if result.success:
-            app_record.applied_at = result.applied_at or datetime.now(timezone.utc)
+            app_record.applied_at = result.applied_at or now
             app_record.confirmation_details = {
                 "message": result.confirmation_message,
                 "url": result.confirmation_url,
@@ -379,7 +496,7 @@ class ApplicationService:
             app_record.failure_reason = result.failure_reason
             app_record.submission_screenshot = result.screenshot_path
 
-        app_record.updated_at = datetime.now(timezone.utc)
+        app_record.updated_at = now
         db.commit()
         db.refresh(app_record)
         return result

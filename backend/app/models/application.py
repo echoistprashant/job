@@ -40,6 +40,11 @@ class Application(Base):
     failure_reason = Column(Text, nullable=True)
     submission_screenshot = Column(String(512), nullable=True)
 
+    # Lifecycle tracking & audit history
+    status_history = Column(JSON, nullable=True, default=list)
+    interview_details = Column(JSON, nullable=True)
+    notes = Column(Text, nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
@@ -79,6 +84,36 @@ class SubmissionResult(BaseModel):
     applied_at: Optional[datetime] = None
 
 
+VALID_STATUSES = [
+    "SAVED",
+    "MATCHED",
+    "READY",
+    "APPROVED",
+    "SUBMITTED",
+    "INTERVIEW",
+    "OFFER",
+    "REJECTED",
+    "WITHDRAWN",
+    "FAILED",
+]
+
+
+class StatusHistoryEntry(BaseModel):
+    from_status: Optional[str] = None
+    to_status: str
+    timestamp: str
+    actor: str = "user"
+    note: Optional[str] = None
+    interview_details: Optional[Dict[str, Any]] = None
+
+
+class StatusUpdatePayload(BaseModel):
+    status: str
+    note: Optional[str] = None
+    actor: str = "user"
+    interview_details: Optional[Dict[str, Any]] = None
+
+
 class ApplicationResponse(BaseModel):
     id: int
     job_id: int
@@ -97,6 +132,9 @@ class ApplicationResponse(BaseModel):
     confirmation_details: Optional[Dict[str, Any]] = None
     failure_reason: Optional[str] = None
     submission_screenshot: Optional[str] = None
+    status_history: List[Dict[str, Any]] = Field(default_factory=list)
+    interview_details: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -109,8 +147,11 @@ class ApplicationContentUpdate(BaseModel):
     answers: Optional[Dict[str, Any]] = None
     tailored_resume: Optional[Dict[str, Any]] = None
     status: Optional[str] = None
+    notes: Optional[str] = None
+    interview_details: Optional[Dict[str, Any]] = None
 
 
 class ApplicationListResponse(BaseModel):
     total: int
     items: List[ApplicationResponse]
+

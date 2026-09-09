@@ -12,6 +12,7 @@ from backend.app.models.application import (
     ApplicationContentUpdate,
     ApplicationListResponse,
     ApplicationResponse,
+    StatusUpdatePayload,
     SubmissionResult,
 )
 from backend.app.services.application_service import application_service
@@ -163,3 +164,40 @@ async def submit_application(
         app_id=application_id,
         resume_file_path=resume_path
     )
+
+
+@router.post("/{application_id}/status", response_model=ApplicationResponse, status_code=status.HTTP_200_OK)
+def update_application_status(
+    application_id: int,
+    payload: StatusUpdatePayload,
+    db: Session = Depends(get_db)
+):
+    """
+    Phase 40: Update application lifecycle status with audit note and optional interview details.
+    Statuses: SAVED, MATCHED, READY, APPROVED, SUBMITTED, INTERVIEW, OFFER, REJECTED, WITHDRAWN, FAILED.
+    """
+    app_record = application_service.update_application_status(
+        db=db,
+        app_id=application_id,
+        new_status=payload.status,
+        note=payload.note,
+        actor=payload.actor or "user",
+        interview_details=payload.interview_details
+    )
+    return ApplicationResponse.model_validate(app_record)
+
+
+@router.get("/{application_id}/history", response_model=List[Dict[str, Any]], status_code=status.HTTP_200_OK)
+def get_application_history(
+    application_id: int,
+    db: Session = Depends(get_db)
+):
+    """Phase 40 & 41: Retrieve chronological audit history of application status changes."""
+    app_record = application_service.get_application(db, application_id)
+    if not app_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Application with ID {application_id} not found."
+        )
+    return app_record.status_history or []
+
