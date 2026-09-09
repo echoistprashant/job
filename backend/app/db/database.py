@@ -37,6 +37,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     """Create all database tables."""
+    from backend.app.models.job import Job  # noqa: F401
+    from backend.app.models.match import JobMatch  # noqa: F401
     Base.metadata.create_all(bind=engine)
 
 

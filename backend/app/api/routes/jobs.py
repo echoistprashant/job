@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from backend.app.db.database import get_db
 from backend.app.models.job import JobFilterParams, JobListResponse, JobResponse
+from backend.app.models.match import JobMatchResponse
 from backend.app.services.job_service import job_service
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
@@ -84,3 +85,29 @@ def get_job(
             detail=f"Job with ID {job_id} not found."
         )
     return JobResponse.model_validate(job)
+
+
+@router.post("/{job_id}/match", response_model=JobMatchResponse, status_code=status.HTTP_200_OK)
+def match_job_with_candidate_profile(
+    job_id: int,
+    db: Session = Depends(get_db)
+):
+    """Compute and persist 6-dimension AI match score for a job against the candidate profile."""
+    from backend.app.models.match import format_job_match
+    match = job_service.match_job(db=db, job_id=job_id)
+    return format_job_match(match)
+
+
+@router.get("/{job_id}/match", response_model=JobMatchResponse, status_code=status.HTTP_200_OK)
+def get_job_match_result(
+    job_id: int,
+    db: Session = Depends(get_db)
+):
+    """Retrieve existing match score and breakdown for a job."""
+    from backend.app.models.match import format_job_match
+    match = job_service.get_job_match(db=db, job_id=job_id)
+    if not match:
+        # If not matched yet, compute on demand
+        match = job_service.match_job(db=db, job_id=job_id)
+    return format_job_match(match)
+

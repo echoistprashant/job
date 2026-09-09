@@ -3,6 +3,8 @@ from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from backend.app.models.job import Job, JobCreate, JobFilterParams
+from backend.app.models.resume import CandidateProfile
+
 from backend.app.services.adapters.base import BaseJobAdapter
 from backend.app.services.adapters.greenhouse_adapter import GreenhouseJobAdapter
 
@@ -134,5 +136,69 @@ class JobService:
         """Retrieve a specific job by its primary key ID."""
         return db.query(Job).filter(Job.id == job_id).first()
 
+    def match_job(
+        self,
+        db: Session,
+        job_id: int,
+        profile: Optional[CandidateProfile] = None
+    ) -> "JobMatch":
+        """Compute 6-dimension hybrid match score and persist in job_matches table."""
+        from fastapi import HTTPException, status
+        from backend.app.models.match import JobMatch
+        from backend.app.ai.matcher import hybrid_matcher
+        from backend.app.services.resume_service import resume_service
+
+        job = self.get_job_by_id(db, job_id)
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job with ID {job_id} not found."
+            )
+
+        if profile is None:
+            profile = resume_service.get_current_profile() or CandidateProfile()
+
+        composite_score, breakdown, strengths, gaps, explanation = hybrid_matcher.match(profile, job)
+
+        existing_match = db.query(JobMatch).filter(JobMatch.job_id == job_id).first()
+        if existing_match:
+            existing_match.score = composite_score
+            existing_match.skills_score = breakdown.skills
+            existing_match.experience_score = breakdown.experience
+            existing_match.role_score = breakdown.role
+            existing_match.location_score = breakdown.location
+            existing_match.education_score = breakdown.education
+            existing_match.responsibilities_score = breakdown.responsibilities
+            existing_match.strengths = strengths
+            existing_match.gaps = gaps
+            existing_match.explanation = explanation
+            db.commit()
+            db.refresh(existing_match)
+            return existing_match
+
+        new_match = JobMatch(
+            job_id=job_id,
+            score=composite_score,
+            skills_score=breakdown.skills,
+            experience_score=breakdown.experience,
+            role_score=breakdown.role,
+            location_score=breakdown.location,
+            education_score=breakdown.education,
+            responsibilities_score=breakdown.responsibilities,
+            strengths=strengths,
+            gaps=gaps,
+            explanation=explanation
+        )
+        db.add(new_match)
+        db.commit()
+        db.refresh(new_match)
+        return new_match
+
+    def get_job_match(self, db: Session, job_id: int) -> Optional["JobMatch"]:
+        """Retrieve previously calculated match for a given job."""
+        from backend.app.models.match import JobMatch
+        return db.query(JobMatch).filter(JobMatch.job_id == job_id).first()
+
 
 job_service = JobService()
+
