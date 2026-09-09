@@ -1,7 +1,17 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import settings
+from backend.app.db.database import init_db
 from backend.app.api.routes.resume import router as resume_router
+from backend.app.api.routes.jobs import router as jobs_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize tables on startup
+    init_db()
+    yield
 
 
 app = FastAPI(
@@ -9,7 +19,8 @@ app = FastAPI(
     version="0.1.0",
     description="Backend API service for AI Job Application Agent",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 # Set up CORS middleware
@@ -23,6 +34,7 @@ app.add_middleware(
 
 # Register routers
 app.include_router(resume_router)
+app.include_router(jobs_router)
 
 
 @app.get("/", tags=["Root"])
