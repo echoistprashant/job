@@ -65,6 +65,11 @@ export const api = {
     body: JSON.stringify({ keywords, locations, limit_per_source: 20 }),
   }),
 
+  ingestJobUrl: (url, company = '', title = '') => request('/jobs/ingest-url', {
+    method: 'POST',
+    body: JSON.stringify({ url, company: company || undefined, title: title || undefined }),
+  }),
+
   getJobDetails: (jobId) => request(`/jobs/${jobId}`),
 
   // Match Scoring

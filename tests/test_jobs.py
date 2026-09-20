@@ -17,6 +17,8 @@ def setup_database():
     init_db()
     db = SessionLocal()
     try:
+        from backend.app.models.match import JobMatch
+        db.query(JobMatch).delete()
         db.query(Job).delete()
         db.commit()
     finally:
@@ -176,3 +178,50 @@ def test_api_jobs_search_and_list():
     # 4. Get non-existent job -> 404
     not_found_resp = client.get("/jobs/999999")
     assert not_found_resp.status_code == 404
+
+
+def test_lever_adapter_normalization():
+    """Verify Lever adapter fetches and normalizes jobs."""
+    from backend.app.services.adapters.lever_adapter import LeverJobAdapter
+    adapter = LeverJobAdapter(board_tokens=["palantir"])
+    jobs = asyncio.run(adapter.fetch_jobs(limit=5))
+    assert len(jobs) > 0
+    for j in jobs:
+        assert isinstance(j, JobCreate)
+        assert j.title
+        assert j.company
+        assert j.url
+        assert j.source == "lever"
+
+
+def test_remote_job_adapter_normalization():
+    """Verify RemoteOK / Jobicy adapter fetches and normalizes remote jobs."""
+    from backend.app.services.adapters.remote_adapter import RemoteJobAdapter
+    adapter = RemoteJobAdapter()
+    jobs = asyncio.run(adapter.fetch_jobs(keywords=["Engineer"], limit=5))
+    assert len(jobs) > 0
+    for j in jobs:
+        assert isinstance(j, JobCreate)
+        assert j.title
+        assert j.company
+        assert j.url
+        assert j.source in ["remoteok", "jobicy"]
+        assert j.remote is True
+
+
+def test_api_jobs_ingest_url():
+    """Verify POST /jobs/ingest-url ingests, parses, stores, and computes match score for a job URL."""
+    payload = {
+        "url": "https://careers.google.com/jobs/results/12345678-software-engineer",
+        "company": "Google",
+        "title": "Software Engineer, Backend Systems",
+        "description": "Looking for Software Engineer with Python, distributed systems, and cloud infrastructure skills."
+    }
+    resp = client.post("/jobs/ingest-url", json=payload)
+    assert resp.status_code in [200, 201]
+    data = resp.json()
+    assert data["company"] == "Google"
+    assert data["title"] == "Software Engineer, Backend Systems"
+    assert data["source"] == "web"
+    assert data["id"] is not None
+

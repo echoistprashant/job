@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, RefreshCw, Filter, ArrowUpDown, ExternalLink, Sparkles, MapPin, Building, Clock, Play, Pause, Zap, CheckCircle2 } from 'lucide-react';
+import { Search, RefreshCw, Filter, ArrowUpDown, ExternalLink, Sparkles, MapPin, Building, Clock, Play, Pause, Zap, CheckCircle2, PlusCircle, Link as LinkIcon, Globe } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function JobListPage({ onSelectJob }) {
@@ -15,6 +15,14 @@ export default function JobListPage({ onSelectJob }) {
   const [remoteOnly, setRemoteOnly] = useState(false);
   const [source, setSource] = useState('');
   const [sortBy, setSortBy] = useState('match_desc'); // match_desc, date_desc, date_asc
+
+  // Direct Job Link Ingestion State
+  const [showImportBox, setShowImportBox] = useState(false);
+  const [importUrl, setImportUrl] = useState('');
+  const [importCompany, setImportCompany] = useState('');
+  const [importTitle, setImportTitle] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importSuccessMsg, setImportSuccessMsg] = useState('');
 
   // Scheduler & Background Worker State (Phases 42 & 43)
   const [schedulerStatus, setSchedulerStatus] = useState(null);
@@ -127,12 +135,34 @@ export default function JobListPage({ onSelectJob }) {
   const handleCollectNewJobs = async () => {
     try {
       setCollecting(true);
-      await api.searchJobs(['AI Engineer', 'Backend', 'Machine Learning'], ['Remote', 'India']);
+      await api.searchJobs(['AI Engineer', 'Backend', 'Machine Learning', 'Software Engineer'], ['Remote', 'Worldwide']);
       await loadJobs();
     } catch (err) {
       alert(`Error collecting jobs: ${err.message}`);
     } finally {
       setCollecting(false);
+    }
+  };
+
+  const handleImportJob = async (e) => {
+    e.preventDefault();
+    if (!importUrl.trim()) return;
+    try {
+      setImporting(true);
+      setImportSuccessMsg('');
+      const newJob = await api.ingestJobUrl(importUrl.trim(), importCompany.trim(), importTitle.trim());
+      setImportSuccessMsg(`Success! Imported "${newJob.title}" at ${newJob.company}.`);
+      setImportUrl('');
+      setImportCompany('');
+      setImportTitle('');
+      await loadJobs();
+      if (onSelectJob) {
+        setTimeout(() => onSelectJob(newJob.id), 800);
+      }
+    } catch (err) {
+      alert(`Failed to import job: ${err.message}`);
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -175,16 +205,24 @@ export default function JobListPage({ onSelectJob }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Job Discovery & Ranking</h1>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Job Discovery & Multi-Platform Search</h1>
           <p style={{ color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-            Aggregated job listings scored and ranked using our 6-dimension AI matching model.
+            Collect postings from Greenhouse, Lever, and RemoteOK, or paste any custom job link to match with your resume.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            className={`btn ${showImportBox ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setShowImportBox(!showImportBox)}
+          >
+            <PlusCircle size={16} />
+            {showImportBox ? 'Close Importer' : 'Paste Job Link'}
+          </button>
+
           <button className="btn btn-secondary" onClick={handleCollectNewJobs} disabled={collecting}>
             <RefreshCw size={16} className={collecting ? 'spin' : ''} />
-            {collecting ? 'Collecting from Sources...' : 'Discover New Jobs'}
+            {collecting ? 'Scanning Sources...' : 'Discover Live Jobs'}
           </button>
 
           <button className="btn btn-primary" onClick={handleMatchAll} disabled={matchingAll}>
@@ -193,6 +231,60 @@ export default function JobListPage({ onSelectJob }) {
           </button>
         </div>
       </div>
+
+      {/* Direct Job Link Importer Box */}
+      {showImportBox && (
+        <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem', border: '1px solid #3b82f6', background: '#eff6ff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <LinkIcon size={18} style={{ color: '#2563eb' }} />
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#1e3a8a', margin: 0 }}>
+              Import Any Job Posting from the Web
+            </h3>
+          </div>
+          <p style={{ fontSize: '0.85rem', color: '#1e40af', marginBottom: '1rem' }}>
+            Paste any posting URL from Greenhouse, Lever, LinkedIn, Indeed, or a company career page. We'll scrape the description, extract requirements, and run AI match scoring against your resume.
+          </p>
+
+          <form onSubmit={handleImportJob} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <input
+                type="url"
+                required
+                className="form-input"
+                placeholder="https://boards.greenhouse.io/stripe/jobs/123 or https://jobs.lever.co/palantir/..."
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                style={{ flex: '2 1 300px' }}
+              />
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Company (optional)"
+                value={importCompany}
+                onChange={(e) => setImportCompany(e.target.value)}
+                style={{ flex: '1 1 140px' }}
+              />
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Job Title (optional)"
+                value={importTitle}
+                onChange={(e) => setImportTitle(e.target.value)}
+                style={{ flex: '1 1 160px' }}
+              />
+              <button type="submit" className="btn btn-primary" disabled={importing} style={{ minWidth: '130px' }}>
+                {importing ? <RefreshCw size={14} className="spin" /> : <Sparkles size={14} />}
+                {importing ? 'Importing...' : 'Import & Match'}
+              </button>
+            </div>
+            {importSuccessMsg && (
+              <div style={{ fontSize: '0.85rem', color: '#166534', display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.25rem' }}>
+                <CheckCircle2 size={16} /> {importSuccessMsg}
+              </div>
+            )}
+          </form>
+        </div>
+      )}
 
       {/* Background Automation & Scheduler Panel (Phases 42 & 43) */}
       <div className="card" style={{ padding: '0.85rem 1.25rem', marginBottom: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
@@ -268,11 +360,14 @@ export default function JobListPage({ onSelectJob }) {
             />
           </div>
 
-          <div style={{ width: '130px' }}>
+          <div style={{ width: '150px' }}>
             <select className="form-select" value={source} onChange={(e) => setSource(e.target.value)}>
               <option value="">All Sources</option>
               <option value="greenhouse">Greenhouse</option>
               <option value="lever">Lever</option>
+              <option value="remoteok">RemoteOK</option>
+              <option value="jobicy">Jobicy</option>
+              <option value="web">Direct Web Links</option>
               <option value="manual">Manual</option>
             </select>
           </div>

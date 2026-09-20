@@ -7,11 +7,17 @@ from backend.app.models.resume import CandidateProfile
 
 from backend.app.services.adapters.base import BaseJobAdapter
 from backend.app.services.adapters.greenhouse_adapter import GreenhouseJobAdapter
+from backend.app.services.adapters.lever_adapter import LeverJobAdapter
+from backend.app.services.adapters.remote_adapter import RemoteJobAdapter
 
 
 class JobService:
     def __init__(self, adapters: Optional[List[BaseJobAdapter]] = None):
-        self._adapters: List[BaseJobAdapter] = adapters or [GreenhouseJobAdapter()]
+        self._adapters: List[BaseJobAdapter] = adapters or [
+            GreenhouseJobAdapter(),
+            LeverJobAdapter(),
+            RemoteJobAdapter()
+        ]
 
     def store_job(self, db: Session, job_in: JobCreate) -> Tuple[Job, bool]:
         """

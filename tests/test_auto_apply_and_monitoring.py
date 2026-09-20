@@ -47,6 +47,11 @@ def setup_teardown_profile():
     resume_service.save_profile(profile)
     # Reset policy to default state
     auto_apply_service.update_policy(AutoApplyPolicy())
+    with SessionLocal() as db:
+        db.query(JobMatch).delete()
+        db.query(Application).delete()
+        db.query(Job).delete()
+        db.commit()
     yield
     # Reset policy after tests
     auto_apply_service.update_policy(AutoApplyPolicy())
