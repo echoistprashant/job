@@ -68,6 +68,31 @@ class ResumeTailor:
             f"Focused on leveraging {top_skill_str} to drive impact as {job.title} at {job.company}."
         )
 
+        # Try Groq LLM tailored summary if configured
+        from backend.app.ai.llm_client import llm_client
+        if llm_client.is_configured:
+            llm_prompt = (
+                f"You are a professional resume writer crafting an executive summary tailored for a job application.\n"
+                f"Target Role: {job.title}\n"
+                f"Target Company: {job.company}\n"
+                f"Candidate Verified Skills: {top_skill_str}\n"
+                f"Base Summary: {cand_summary}\n\n"
+                f"Output a JSON object with:\n"
+                f"- 'headline': punchy 1-line professional title (e.g. 'Senior Python Engineer | Cloud Architecture & APIs')\n"
+                f"- 'tailored_summary': 2-3 sentence impactful executive summary highlighting fit for {job.company}\n"
+                f"Strictly output only JSON."
+            )
+            llm_result = llm_client.chat_json([
+                {"role": "system", "content": "You are an expert executive resume writer. Output only JSON."},
+                {"role": "user", "content": llm_prompt}
+            ])
+            if llm_result and isinstance(llm_result, dict):
+                h = llm_result.get("headline")
+                s = llm_result.get("tailored_summary")
+                if h and s:
+                    headline = h
+                    tailored_summary = s
+
         # 3. Project scoring and reordering
         # Score each project by keyword overlap with job
         scored_projects: List[tuple[float, ProjectItem]] = []

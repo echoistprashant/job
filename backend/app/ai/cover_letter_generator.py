@@ -60,6 +60,53 @@ class CoverLetterGenerator:
         if profile.candidate.experience:
             top_exp = profile.candidate.experience[0]
 
+        # Try Groq LLM generation first if configured
+        from backend.app.ai.llm_client import llm_client
+
+        if llm_client.is_configured:
+            cand_exp_summary = "; ".join([f"{e.role} at {e.company}: {e.description}" for e in profile.candidate.experience[:2]])
+            cand_proj_summary = "; ".join([f"{p.title}: {p.description}" for p in profile.candidate.projects[:2]])
+            prompt = (
+                f"Write a highly tailored, professional, and convincing cover letter for an applicant.\n"
+                f"Applicant Name: {cand_name}\n"
+                f"Target Role: {role}\n"
+                f"Target Company: {company}\n"
+                f"Candidate Skills: {', '.join(profile.skills[:8])}\n"
+                f"Candidate Experience: {cand_exp_summary}\n"
+                f"Candidate Projects: {cand_proj_summary}\n"
+                f"Job Details: {job.description[:700]}\n"
+                f"Tone: {custom_tone}\n\n"
+                f"Output MUST be valid JSON with keys:\n"
+                f"- 'salutation': string (e.g. 'Dear {company} Hiring Team,')\n"
+                f"- 'opening': string (strong hook expressing excitement and fit)\n"
+                f"- 'body_paragraphs': list of 2 strings (concrete accomplishments and value alignment)\n"
+                f"- 'closing': string (call to action, thank you, and sign-off)\n"
+                f"Do not invent false certifications or degrees. Respond ONLY in valid JSON."
+            )
+            llm_result = llm_client.chat_json([
+                {"role": "system", "content": "You are an executive career strategist writing authentic, high-converting cover letters."},
+                {"role": "user", "content": prompt}
+            ])
+            if llm_result and isinstance(llm_result, dict):
+                salutation = llm_result.get("salutation", f"Dear {company} Hiring Team,")
+                opening = llm_result.get("opening", "")
+                body_paragraphs = llm_result.get("body_paragraphs", [])
+                closing = llm_result.get("closing", f"Sincerely,\n{cand_name}")
+                if opening and body_paragraphs and isinstance(body_paragraphs, list):
+                    full_text = f"{salutation}\n\n{opening}\n\n" + "\n\n".join(body_paragraphs) + f"\n\n{closing}"
+                    return CoverLetterDraft(
+                        job_id=job.id,
+                        company=company,
+                        role=role,
+                        salutation=salutation,
+                        opening=opening,
+                        body_paragraphs=body_paragraphs,
+                        closing=closing,
+                        full_text=full_text,
+                        grounded_skills=matching_skills,
+                        grounded_projects=[top_project.title] if top_project else []
+                    )
+
         # Structure parts
         salutation = f"Dear {company} Hiring Team,"
 

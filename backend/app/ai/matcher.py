@@ -139,6 +139,37 @@ class LLMMatchReasoner:
         job: Job,
         overall_score: float
     ) -> Tuple[List[str], List[str], str]:
+        # Try Groq LLM reasoning first if configured
+        from backend.app.ai.llm_client import llm_client
+
+        if llm_client.is_configured:
+            prompt = (
+                f"You are an expert technical recruiter analyzing job match.\n"
+                f"Candidate Skills: {', '.join(candidate_skills)}\n"
+                f"Matched Skills: {', '.join(matched_skills)}\n"
+                f"Missing/Gaps: {', '.join(missing_skills)}\n"
+                f"Job Title: {job.title}\n"
+                f"Company: {job.company}\n"
+                f"Match Score: {overall_score:.1f}%\n"
+                f"Job Description Excerpt: {job.description[:600]}\n\n"
+                f"Provide a JSON response with keys:\n"
+                f"- 'strengths': list of 2-4 specific bullet points on why the candidate fits\n"
+                f"- 'gaps': list of 1-3 bullet points on missing requirements or growth areas\n"
+                f"- 'explanation': a 2-3 sentence executive recruiter summary of the fit\n"
+                f"Strictly output only valid JSON."
+            )
+            llm_result = llm_client.chat_json([
+                {"role": "system", "content": "You are a professional hiring decision analyst. Respond only in JSON."},
+                {"role": "user", "content": prompt}
+            ])
+            if llm_result and isinstance(llm_result, dict):
+                s = llm_result.get("strengths")
+                g = llm_result.get("gaps")
+                exp = llm_result.get("explanation")
+                if s and g and exp and isinstance(s, list) and isinstance(g, list) and isinstance(exp, str):
+                    return s[:5], g[:4], exp
+
+        # Deterministic grounded fallback
         strengths = []
         for s in matched_skills[:4]:
             strengths.append(f"Strong match for required skill: {s}")

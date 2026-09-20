@@ -212,6 +212,27 @@ class GroundedQuestionAgent:
             f"solving complex engineering challenges makes me eager to contribute directly to {company}'s missions and growth."
         )
 
+        # Try Groq LLM grounded answering if configured
+        from backend.app.ai.llm_client import llm_client
+
+        if llm_client.is_configured:
+            llm_prompt = (
+                f"You are the applicant answering an employer screening question.\n"
+                f"Question: {question.prompt}\n"
+                f"Target Role: {role}\n"
+                f"Target Company: {company}\n"
+                f"Your Verified Skills: {skills_summary}\n"
+                f"Summary: {profile.candidate.summary or 'Passionate engineer'}\n\n"
+                f"Write a persuasive, authentic 2-3 sentence answer explaining your motivation and how your skills fit.\n"
+                f"Respond with only the direct answer text (no quotes, no preamble)."
+            )
+            llm_ans = llm_client.chat([
+                {"role": "system", "content": "You write concise, persuasive job screening answers grounded in actual candidate qualifications."},
+                {"role": "user", "content": llm_prompt}
+            ])
+            if llm_ans and len(llm_ans.strip()) > 15:
+                answer = llm_ans.strip()
+
         grounded_facts = [
             f"Target role alignment: {role}",
             f"Core skills: {skills_summary}",

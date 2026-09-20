@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     AUTO_APPLY_ENABLED: bool = False
     MINIMUM_MATCH_SCORE: int = 75
 
+    # LLM Settings (Groq API - Free Tier)
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
