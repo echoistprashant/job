@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
@@ -83,17 +85,29 @@ class JobService:
         new_count = 0
         total_collected = 0
 
-        for adapter in self._adapters:
-            normalized_jobs = await adapter.fetch_jobs(
+        tasks = [
+            adapter.fetch_jobs(
                 keywords=keywords,
                 locations=locations,
                 limit=limit_per_source
             )
-            total_collected += len(normalized_jobs)
-            for job_in in normalized_jobs:
-                _, created = self.store_job(db, job_in)
-                if created:
-                    new_count += 1
+            for adapter in self._adapters
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for result in results:
+            if isinstance(result, Exception):
+                logging.getLogger("ai_job_agent.job_service").warning(
+                    f"Adapter job fetch encountered error: {result}"
+                )
+                continue
+            if isinstance(result, list):
+                total_collected += len(result)
+                for job_in in result:
+                    _, created = self.store_job(db, job_in)
+                    if created:
+                        new_count += 1
 
         return new_count, total_collected
 
